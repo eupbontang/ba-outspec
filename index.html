@@ -218,7 +218,8 @@ textarea { resize: vertical; min-height: 80px; }
     <div style="display:flex;flex-direction:column;gap:14px;">
       <div class="form-group">
         <label>Nama Anda *</label>
-        <input type="text" id="login-nama" placeholder="Masukkan nama Anda" autocomplete="off"/>
+        <input type="text" id="login-nama" placeholder="Masukkan nama Anda" autocomplete="off" list="nama-history"/>
+        <datalist id="nama-history"></datalist>
       </div>
       <div class="form-group">
         <label>Username</label>
@@ -618,6 +619,57 @@ textarea { resize: vertical; min-height: 80px; }
   </div>
 </div>
 
+<!-- ═══ MODAL EDIT BA ═══ -->
+<div class="modal-overlay hidden" id="modal-edit-ba">
+  <div class="modal" style="max-width:720px;">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Edit BA Out Spec</div>
+        <div id="edit-ba-subtitle" style="font-size:12px;color:var(--text3);margin-top:2px;"></div>
+      </div>
+      <button class="close-btn" onclick="closeModal('modal-edit-ba')">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-ba-id"/>
+      <div class="form-grid" style="margin-bottom:16px;">
+        <div class="form-group">
+          <label>Tanggal Analisa *</label>
+          <input type="date" id="edit-tanggal"/>
+        </div>
+        <div class="form-group">
+          <label>Shift *</label>
+          <select id="edit-shift">
+            <option value="Shift 1 (08:00 s/d 16:00)">Shift 1 (08:00 s/d 16:00)</option>
+            <option value="Shift 2 (16:00 s/d 00:00)">Shift 2 (16:00 s/d 00:00)</option>
+            <option value="Shift 3 (00:00 s/d 08:00)">Shift 3 (00:00 s/d 08:00)</option>
+            <option value="Long Day - LD (08:00 s/d 20:00)">Long Day - LD (08:00 s/d 20:00)</option>
+            <option value="Long Night - LN (20:00 s/d 08:00)">Long Night - LN (20:00 s/d 08:00)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-section-title">Item Analisa</div>
+      <div id="edit-items-container"></div>
+      <button class="btn btn-outline btn-sm" onclick="addEditItem()" style="margin-top:8px;">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        Tambah Baris
+      </button>
+      <div class="form-group" style="margin-top:16px;">
+        <label>Catatan</label>
+        <textarea id="edit-catatan" rows="2"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('modal-edit-ba')">Batal</button>
+      <button class="btn btn-primary" onclick="saveEditBA()">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg>
+        Simpan Perubahan
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- PRINT AREA -->
 <div class="print-area" id="print-area"></div>
 
@@ -789,6 +841,17 @@ function seedData() { /* kosong — data dari Google Sheets */ }
 // ════════════════════════════════════════════
 // AUTH
 // ════════════════════════════════════════════
+function saveNamaHistory(nama) {
+  let list = JSON.parse(localStorage.getItem('nama_history') || '[]');
+  list = [nama, ...list.filter(n => n !== nama)].slice(0, 8); // maks 8 nama terakhir
+  localStorage.setItem('nama_history', JSON.stringify(list));
+}
+function loadNamaHistory() {
+  const list = JSON.parse(localStorage.getItem('nama_history') || '[]');
+  const dl = document.getElementById('nama-history');
+  if (dl) dl.innerHTML = list.map(n => `<option value="${n}"/>`).join('');
+}
+
 function doLogin() {
   const namaEl = document.getElementById('login-nama');
   const userEl = document.getElementById('login-user');
@@ -810,7 +873,8 @@ function doLogin() {
     return;
   }
   errEl.classList.add('hidden');
-  // Buat salinan user dengan nama dari input — pastikan tidak bisa kosong
+  saveNamaHistory(nama); // simpan nama ke history
+  loadNamaHistory();     // update datalist
   currentUser = { id: user.id, username: user.username, jabatan: user.jabatan, role: user.role, nama: nama };
   document.getElementById('login-page').classList.remove('active');
   document.getElementById('app').classList.remove('hidden');
@@ -823,7 +887,10 @@ function doLogout() {
   document.getElementById('login-nama').value='';
   document.getElementById('login-user').value='';
   document.getElementById('login-pass').value='';
+  loadNamaHistory(); // tampilkan history saat kembali ke login
 }
+// Load history saat halaman pertama dibuka
+document.addEventListener('DOMContentLoaded', loadNamaHistory);
 document.getElementById('login-nama').addEventListener('keydown', e => { if(e.key==='Enter') document.getElementById('login-user').focus(); });
 document.getElementById('login-user').addEventListener('keydown', e => { if(e.key==='Enter') document.getElementById('login-pass').focus(); });
 document.getElementById('login-pass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
@@ -1014,36 +1081,54 @@ function updateNoBAPreview() {
   const no = genNoBA(getData());
   document.getElementById('preview-no-ba').textContent = 'No. BA: ' + no;
 }
+function saveFieldHistory(key, value) {
+  if (!value || value === '-') return;
+  let list = JSON.parse(localStorage.getItem('fh_' + key) || '[]');
+  list = [value, ...list.filter(v => v !== value)].slice(0, 10);
+  localStorage.setItem('fh_' + key, JSON.stringify(list));
+}
+function getFieldHistory(key) {
+  return JSON.parse(localStorage.getItem('fh_' + key) || '[]');
+}
+function fillDatalist(datalistId, key) {
+  const dl = document.getElementById(datalistId);
+  if (!dl) return;
+  const list = getFieldHistory(key);
+  dl.innerHTML = list.map(v => `<option value="${v}"/>`).join('');
+}
+
 function addItem() {
   itemCount++;
+  const n = itemCount;
   const div = document.createElement('div');
-  div.id = `item-${itemCount}`;
+  div.id = `item-${n}`;
   div.style.cssText = 'background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:10px;position:relative;';
   div.innerHTML = `
-    <div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">Baris #${itemCount}</div>
+    <div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">Baris #${n}</div>
     <div class="form-grid-3">
       <div class="form-group">
         <label>Plant *</label>
-        <input type="text" class="item-plant" placeholder="cth: CF, BD1, BD2..." list="list-plant-${itemCount}"/>
-        <datalist id="list-plant-${itemCount}">
+        <input type="text" class="item-plant" placeholder="cth: CF, BD1, BD2..." list="list-plant-${n}"/>
+        <datalist id="list-plant-${n}">
           <option value="CF"/><option value="BD1"/><option value="BD2"/><option value="BD3"/>
         </datalist>
       </div>
       <div class="form-group">
         <label>Produk *</label>
-        <input type="text" class="item-produk" placeholder="cth: FAME, CG, Glycerol..." list="list-produk-${itemCount}"/>
-        <datalist id="list-produk-${itemCount}">
+        <input type="text" class="item-produk" placeholder="cth: FAME, CG, Glycerol..." list="list-produk-${n}"/>
+        <datalist id="list-produk-${n}">
           <option value="FAME"/><option value="CG"/><option value="Glycerol"/><option value="Olein"/><option value="Stearin"/>
         </datalist>
       </div>
       <div class="form-group">
         <label>Source Sample</label>
-        <input type="text" class="item-source" placeholder="cth: CF, Header, PU5331"/>
+        <input type="text" class="item-source" placeholder="cth: CF, Header, PU5331" list="list-source-${n}"/>
+        <datalist id="list-source-${n}"></datalist>
       </div>
       <div class="form-group">
         <label>Parameter *</label>
-        <input type="text" class="item-parameter" placeholder="cth: WC, MG, FFA, Moist..." list="list-param-${itemCount}"/>
-        <datalist id="list-param-${itemCount}">
+        <input type="text" class="item-parameter" placeholder="cth: WC, MG, FFA, Moist..." list="list-param-${n}"/>
+        <datalist id="list-param-${n}">
           <option value="WC"/><option value="MG"/><option value="FFA"/><option value="Color"/>
           <option value="Moist"/><option value="IV"/><option value="FP"/><option value="PP"/>
           <option value="CP"/><option value="Density"/><option value="Viscosity"/>
@@ -1059,12 +1144,16 @@ function addItem() {
       </div>
       <div class="form-group">
         <label>Spesifikasi</label>
-        <input type="text" class="item-spec" placeholder="cth: 150ppm Max"/>
+        <input type="text" class="item-spec" placeholder="cth: 150ppm Max" list="list-spec-${n}"/>
+        <datalist id="list-spec-${n}"></datalist>
       </div>
     </div>
-    ${itemCount > 1 ? `<button onclick="removeItem(${itemCount})" style="position:absolute;top:10px;right:10px;background:none;border:none;cursor:pointer;color:var(--danger);font-size:18px;line-height:1;" title="Hapus baris">×</button>` : ''}
+    ${n > 1 ? `<button onclick="removeItem(${n})" style="position:absolute;top:10px;right:10px;background:none;border:none;cursor:pointer;color:var(--danger);font-size:18px;line-height:1;" title="Hapus baris">×</button>` : ''}
   `;
   document.getElementById('items-container').appendChild(div);
+  // Isi datalist dari history
+  fillDatalist(`list-source-${n}`, 'source');
+  fillDatalist(`list-spec-${n}`, 'spec');
 }
 function removeItem(n) {
   const el = document.getElementById('item-'+n);
@@ -1109,6 +1198,11 @@ async function submitBA() {
   };
   const ok = await saveBAToSheets(newBA);
   if (ok) {
+    // Simpan history source & spec dari semua item
+    items.forEach(item => {
+      saveFieldHistory('source', item.source);
+      saveFieldHistory('spec', item.spesifikasi);
+    });
     alert(`BA Out Spec berhasil disimpan!\n\nNomor BA: ${newBA.no_ba}`);
     initInputForm();
     updateBadges();
@@ -1161,6 +1255,7 @@ function renderMonitoring() {
           <td>
             <div class="action-bar">
               <button class="btn btn-outline btn-sm" onclick="openDetail('${d.id}')">Detail</button>
+              ${currentUser?.role==='qc' ? `<button class="btn btn-outline btn-sm" onclick="openEditBA('${d.id}')" style="color:var(--accent);border-color:var(--accent);">Edit</button>` : ''}
               <button class="btn btn-outline btn-sm" onclick="printBA('${d.id}')">Print</button>
             </div>
           </td>
@@ -1421,6 +1516,132 @@ function openDetail(id) {
 // ════════════════════════════════════════════
 // PRINT
 // ════════════════════════════════════════════
+// ════════════════════════════════════════════
+// EDIT BA (khusus QC Staff)
+// ════════════════════════════════════════════
+let editItemCount = 0;
+
+function openEditBA(id) {
+  const d = getData().find(x => x.id === id);
+  if (!d) return;
+  document.getElementById('edit-ba-id').value = id;
+  document.getElementById('edit-ba-subtitle').textContent = d.no_ba + ' — ' + fmtDate(d.tanggal);
+  document.getElementById('edit-tanggal').value = d.tanggal;
+  document.getElementById('edit-shift').value = d.shift;
+  document.getElementById('edit-catatan').value = d.catatan || '';
+  // Isi item yang sudah ada
+  const container = document.getElementById('edit-items-container');
+  container.innerHTML = '';
+  editItemCount = 0;
+  d.items.forEach(item => addEditItem(item));
+  document.getElementById('modal-edit-ba').classList.remove('hidden');
+}
+
+function addEditItem(item = {}) {
+  editItemCount++;
+  const n = editItemCount;
+  const div = document.createElement('div');
+  div.id = `edit-item-${n}`;
+  div.style.cssText = 'background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:8px;position:relative;';
+  div.innerHTML = `
+    <div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;">Baris #${n}</div>
+    <div class="form-grid-3">
+      <div class="form-group">
+        <label>Plant *</label>
+        <input type="text" class="ei-plant" value="${item.plant||''}" list="ep-plant-${n}"/>
+        <datalist id="ep-plant-${n}"><option value="CF"/><option value="BD1"/><option value="BD2"/><option value="BD3"/></datalist>
+      </div>
+      <div class="form-group">
+        <label>Produk *</label>
+        <input type="text" class="ei-produk" value="${item.produk||''}" list="ep-produk-${n}"/>
+        <datalist id="ep-produk-${n}"><option value="FAME"/><option value="CG"/><option value="Glycerol"/><option value="Olein"/><option value="Stearin"/></datalist>
+      </div>
+      <div class="form-group">
+        <label>Source</label>
+        <input type="text" class="ei-source" value="${item.source||''}" list="ep-source-${n}"/>
+        <datalist id="ep-source-${n}"></datalist>
+      </div>
+      <div class="form-group">
+        <label>Parameter *</label>
+        <input type="text" class="ei-parameter" value="${item.parameter||''}" list="ep-param-${n}"/>
+        <datalist id="ep-param-${n}"><option value="WC"/><option value="MG"/><option value="FFA"/><option value="Color"/><option value="Moist"/><option value="IV"/><option value="FP"/><option value="PP"/><option value="CP"/><option value="Density"/><option value="Viscosity"/></datalist>
+      </div>
+      <div class="form-group">
+        <label>Jam</label>
+        <input type="time" class="ei-jam" value="${item.jam||''}"/>
+      </div>
+      <div class="form-group">
+        <label>Hasil *</label>
+        <input type="text" class="ei-hasil" value="${item.hasil||''}"/>
+      </div>
+      <div class="form-group">
+        <label>Spesifikasi</label>
+        <input type="text" class="ei-spec" value="${item.spesifikasi||''}" list="ep-spec-${n}"/>
+        <datalist id="ep-spec-${n}"></datalist>
+      </div>
+    </div>
+    ${n > 1 ? `<button onclick="removeEditItem(${n})" style="position:absolute;top:8px;right:8px;background:none;border:none;cursor:pointer;color:var(--danger);font-size:18px;line-height:1;">×</button>` : ''}
+  `;
+  document.getElementById('edit-items-container').appendChild(div);
+  fillDatalist(`ep-source-${n}`, 'source');
+  fillDatalist(`ep-spec-${n}`, 'spec');
+}
+
+function removeEditItem(n) {
+  const el = document.getElementById(`edit-item-${n}`);
+  if (el) el.remove();
+}
+
+async function saveEditBA() {
+  const id = document.getElementById('edit-ba-id').value;
+  const tanggal = document.getElementById('edit-tanggal').value;
+  const shift = document.getElementById('edit-shift').value;
+  if (!tanggal || !shift) { alert('Tanggal dan shift wajib diisi.'); return; }
+
+  const rows = document.querySelectorAll('#edit-items-container > div');
+  const items = [];
+  let valid = true;
+  rows.forEach(row => {
+    const plant = row.querySelector('.ei-plant')?.value.trim();
+    const produk = row.querySelector('.ei-produk')?.value.trim();
+    const parameter = row.querySelector('.ei-parameter')?.value.trim();
+    const hasil = row.querySelector('.ei-hasil')?.value.trim();
+    if (!plant || !produk || !parameter || !hasil) { valid = false; return; }
+    items.push({
+      plant, produk,
+      source: row.querySelector('.ei-source')?.value.trim() || '-',
+      parameter,
+      jam: row.querySelector('.ei-jam')?.value || '-',
+      hasil,
+      spesifikasi: row.querySelector('.ei-spec')?.value.trim() || '-',
+      keterangan: 'Out Of Spec'
+    });
+  });
+  if (!valid || items.length === 0) { alert('Lengkapi semua field wajib pada setiap baris.'); return; }
+
+  const updates = {
+    tanggal, shift,
+    catatan: document.getElementById('edit-catatan').value.trim(),
+    items
+  };
+
+  // Update cache lokal juga
+  const cached = getData().find(x => x.id === id);
+  if (cached) Object.assign(cached, updates);
+
+  const ok = await updateBAToSheets(id, updates);
+  if (ok) {
+    items.forEach(item => {
+      saveFieldHistory('source', item.source);
+      saveFieldHistory('spec', item.spesifikasi);
+    });
+    closeModal('modal-edit-ba');
+    renderMonitoring();
+    updateBadges();
+    alert('BA berhasil diupdate!');
+  }
+}
+
 function printBA(id) {
   const d = getData().find(x=>x.id===id);
   if (!d) return;
